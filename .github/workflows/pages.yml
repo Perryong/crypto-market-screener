@@ -25,6 +25,8 @@ jobs:
       - name: Verify dashboard logic
         run: node --test tests/dashboard.test.mjs tests/deployment.test.mjs
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - name: Configure public backend URL
         env:
           API_BASE: ${{ vars.CRYEXC_API_BASE }}
