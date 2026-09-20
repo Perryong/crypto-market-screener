@@ -29,6 +29,10 @@ metadata = {}
 
 binance_client: Optional[BinanceClient] = None
 
+# Buffered trades are flushed in batches to avoid one synchronous DuckDB
+# commit (and SD-card fsync) per aggregate trade, which starves the event loop.
+_trade_buffer: list[tuple] = []
+
 TIME_RANGE_MS = {
     "15m": 15 * 60 * 1000,
     "30m": 30 * 60 * 1000,
@@ -443,11 +447,11 @@ async def lifespan(app: FastAPI):
     binance_client = BinanceClient(SYMBOLS)
 
     async def on_trade(trade: dict):
-        db.insert_trade(
+        _trade_buffer.append((
             trade["exchange"], trade["symbol"], trade["price"],
             trade["quantity"], trade["quoteQty"], trade["isBuyerMaker"],
             trade["timestamp"]
-        )
+        ))
 
         for ws, sub in manager.get_subscribers_for_stream("trade", trade["symbol"]):
             config = sub["config"]
@@ -528,7 +532,8 @@ async def lifespan(app: FastAPI):
     logger.info("News client started")
 
     tasks = [asyncio.create_task(coro()) for coro in (cleanup_task, broadcast_orderbook_stats,
-        broadcast_dom, broadcast_footprint, store_orderbook_snapshots, reconcile_symbols, broadcast_cvd)]
+        broadcast_dom, broadcast_footprint, store_orderbook_snapshots, reconcile_symbols, broadcast_cvd,
+        flush_trades)]
     try:
         yield
     finally:
@@ -536,6 +541,9 @@ async def lifespan(app: FastAPI):
         await asyncio.gather(*tasks, return_exceptions=True)
         await binance_client.stop()
         await news_client.stop()
+        if _trade_buffer:
+            db.insert_trades_batch(_trade_buffer)
+            _trade_buffer.clear()
         db.close()
 
 
@@ -570,6 +578,19 @@ async def broadcast_cvd():
                 await ws.send_json({'type':'cvd_historical','symbol':key[0], 'instanceId':sub.get('instanceId'),
                                    'data':[{'exchange':'binancef', **p} for p in cache[key]]})
             except Exception: pass
+
+
+async def flush_trades():
+    global _trade_buffer
+    while True:
+        await asyncio.sleep(1.0)
+        if not _trade_buffer:
+            continue
+        batch, _trade_buffer = _trade_buffer, []
+        try:
+            db.insert_trades_batch(batch)
+        except Exception:
+            logger.exception('Batch trade insert failed (%d trades dropped)', len(batch))
 
 
 async def cleanup_task():

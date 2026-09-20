@@ -58,13 +58,22 @@ class Database:
     def insert_trades_batch(self, trades: list[tuple]):
         if not trades:
             return
-        # Filter out invalid trades with 0 price or quantity
-        valid_trades = [t for t in trades if t[2] > 0 and t[3] > 0]  # price at index 2, qty at index 3
+        # Filter out invalid trades (same validation as insert_trade: finite and > 0)
+        valid_trades = [t for t in trades
+                        if all(math.isfinite(v) and v > 0 for v in (t[2], t[3], t[4]))]
         if not valid_trades:
             return
-        self.conn.executemany("""
-            INSERT INTO trades VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, valid_trades)
+        # Bulk multi-row INSERT is far faster than executemany here (DuckDB's
+        # executemany is pathologically slow per-row on this platform).
+        placeholders = ",".join(["(?, ?, ?, ?, ?, ?, ?)"] * len(valid_trades))
+        params = [v for t in valid_trades for v in t]
+        self.conn.begin()
+        try:
+            self.conn.execute(f"INSERT INTO trades VALUES {placeholders}", params)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def insert_orderbook_snapshot(self, exchange: str, symbol: str, timestamp: int,
                                   tick_size: float, levels: list[dict]):
@@ -76,9 +85,15 @@ class Database:
              lvl["price"], lvl.get("bid_qty", 0), lvl.get("ask_qty", 0))
             for lvl in levels
         ]
-        self.conn.executemany("""
-            INSERT INTO orderbook_snapshots VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, rows)
+        placeholders = ",".join(["(?, ?, ?, ?, ?, ?, ?)"] * len(rows))
+        params = [v for r in rows for v in r]
+        self.conn.begin()
+        try:
+            self.conn.execute(f"INSERT INTO orderbook_snapshots VALUES {placeholders}", params)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def get_cvd_historical(self, exchange: str, symbol: str, interval_ms: int,
                            time_range_ms: int) -> list[dict]:
