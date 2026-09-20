@@ -1,0 +1,44 @@
+name: Deploy dashboard to GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths: ['static/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify dashboard logic
+        run: node --test tests/dashboard.test.mjs tests/deployment.test.mjs
+      - uses: actions/configure-pages@v5
+      - name: Configure public backend URL
+        env:
+          API_BASE: ${{ vars.CRYEXC_API_BASE }}
+        run: |
+          node --input-type=module <<'JS'
+          import {writeFileSync} from 'node:fs';
+          import {backendURLs} from './static/deployment.mjs';
+          const base = process.env.API_BASE || '';
+          if (base) backendURLs(base, 'https://pages.github.io');
+          writeFileSync('static/config.mjs', 'export const API_BASE = ' + JSON.stringify(base) + ';\n');
+          JS
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: static
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v4

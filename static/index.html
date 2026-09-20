@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#101317" />
+    <title>Cryexc • Binance terminal</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./"
+        ><span class="brand-mark">c<span>↗</span></span
+        >cryexc<span class="badge">TERMINAL</span></a
+      >
+      <nav aria-label="Workspace navigation">
+        <a href="#workspace" class="selected">Workspace</a
+        ><a href="#panel-screener">Markets</a><a href="#panel-news">News</a>
+      </nav>
+      <div class="top-right">
+        <span class="exchange-dot"></span><span>Binance Futures</span
+        ><button id="settings-open" aria-label="Workspace settings">
+          ⚙ <span>Settings</span>
+        </button>
+      </div>
+    </header>
+    <main>
+      <div class="toolbar">
+        <div class="symbol-control">
+          <span class="coin">₿</span
+          ><label class="sr-only" for="symbol">Market symbol</label
+          ><input
+            id="symbol"
+            list="symbols"
+            value="BTCUSDT"
+            autocomplete="off"
+            aria-label="Market symbol"
+          /><datalist id="symbols"></datalist><span class="badge">PERP</span>
+        </div>
+        <span class="divider"></span>
+        <div id="intervals" role="group" aria-label="Chart interval">
+          <button data-interval="1m">1m</button
+          ><button data-interval="5m">5m</button
+          ><button data-interval="15m">15m</button
+          ><button data-interval="1h">1h</button
+          ><button data-interval="4h">4h</button>
+        </div>
+        <label class="tick-label"
+          >Price grouping
+          <input id="tick" type="number" min="0.1" step="0.1" value="10"
+        /></label>
+        <div class="connection">
+          <span id="status-dot" class="status-dot"></span
+          ><span id="connection-status" role="status">Connecting…</span
+          ><button id="retry" title="Reconnect feeds">↻</button>
+        </div>
+      </div>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section class="summary" aria-label="Market summary">
+        <div class="price-block">
+          <span class="eyebrow">LAST PRICE</span
+          ><strong id="last-price">—</strong><span id="price-change">—</span>
+        </div>
+        <div>
+          <span class="eyebrow">24H HIGH</span><strong id="high">—</strong>
+        </div>
+        <div>
+          <span class="eyebrow">24H LOW</span><strong id="low">—</strong>
+        </div>
+        <div>
+          <span class="eyebrow">24H VOLUME (USD)</span
+          ><strong id="volume">—</strong>
+        </div>
+        <div>
+          <span class="eyebrow">FUNDING RATE</span
+          ><strong id="funding">—</strong>
+        </div>
+        <div>
+          <span class="eyebrow">OPEN INTEREST (USD)</span
+          ><strong id="oi">—</strong>
+        </div>
+        <div>
+          <span class="eyebrow">SPREAD</span><strong id="spread">—</strong>
+        </div>
+      </section>
+      <div id="workspace" class="workspace">
+        <section id="panel-candles" class="panel chart-panel">
+          <div class="panel-head">
+            <h2>
+              <span class="panel-icon">⌁</span> Price chart
+              <span class="muted market-name">BTCUSDT</span>
+            </h2>
+            <div class="panel-actions">
+              <span class="tag">OHLCV</span
+              ><button id="chart-reset">Reset view</button>
+            </div>
+          </div>
+          <div id="ohlc" class="chart-readout">Loading Binance candles…</div>
+          <canvas
+            id="candles-chart"
+            aria-label="Candlestick and volume chart"
+            role="img"
+          ></canvas>
+          <div class="panel-foot">
+            <span>Scroll to zoom · Drag to pan</span
+            ><span id="candle-status">Waiting for history</span>
+          </div>
+        </section>
+        <section id="panel-orderbook" class="panel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">▤</span> Order book</h2>
+            <span class="tag">LIVE DEPTH</span>
+          </div>
+          <div class="table-head three">
+            <span>Price</span><span>Size</span><span>Total</span>
+          </div>
+          <div id="asks" class="book-side"></div>
+          <div class="midprice">
+            <strong id="book-mid">—</strong
+            ><span id="book-status">Synchronizing</span>
+          </div>
+          <div id="bids" class="book-side"></div>
+          <div class="panel-foot">
+            <span>Bid / ask balance</span><span id="imbalance">—</span>
+          </div>
+          <div class="balance"><i id="balance-bar"></i></div>
+        </section>
+        <section id="panel-cvd" class="panel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">∿</span> Cumulative delta</h2>
+            <strong id="cvd-value" class="positive">—</strong>
+          </div>
+          <canvas
+            id="cvd-chart"
+            aria-label="Rolling one-hour notional CVD"
+            role="img"
+          ></canvas>
+          <div class="panel-foot">
+            <span>Rolling 1h · USD notional</span
+            ><span class="history-coverage" data-kind="cvd"
+              >Collecting history</span
+            >
+          </div>
+        </section>
+        <section id="panel-trades" class="panel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">⇄</span> Recent trades</h2>
+            <button data-pause="trades">Pause</button>
+          </div>
+          <div class="filters">
+            <label
+              >Side
+              <select id="trade-side">
+                <option value="">All</option>
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+              </select></label
+            ><label
+              >Min $ <input id="trade-min" type="number" min="0" value="0"
+            /></label>
+          </div>
+          <div class="table-head three">
+            <span>Price</span><span>Value (USD)</span><span>Time</span>
+          </div>
+          <div id="trades-list" class="scroll-list">
+            <p class="empty">Waiting for trades…</p>
+          </div>
+        </section>
+        <section id="panel-footprint" class="panel wide">
+          <div class="panel-head">
+            <h2><span class="panel-icon">▦</span> Footprint</h2>
+            <span class="tag">SELL × BUY</span>
+          </div>
+          <canvas
+            id="footprint-chart"
+            aria-label="Footprint volume by price"
+            role="img"
+          ></canvas>
+          <div class="panel-foot">
+            <span>Executed base volume per price level</span
+            ><span class="history-coverage" data-kind="footprint"
+              >Collecting history</span
+            >
+          </div>
+        </section>
+        <section id="panel-dom" class="panel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">≡</span> Depth of market</h2>
+            <span class="tag">1H SESSION</span>
+          </div>
+          <div class="table-head dom-row">
+            <span>Bid</span><span>Price</span><span>Ask</span><span>Bought</span
+            ><span>Sold</span><span>Delta</span>
+          </div>
+          <div id="dom-list" class="scroll-list">
+            <p class="empty">Waiting for synchronized depth…</p>
+          </div>
+        </section>
+        <section id="panel-heatmap" class="panel wide">
+          <div class="panel-head">
+            <h2><span class="panel-icon">▥</span> Liquidity heatmap</h2>
+            <span class="legend">Low <i></i> High</span>
+          </div>
+          <canvas
+            id="heatmap-chart"
+            aria-label="Historical resting liquidity heatmap"
+            role="img"
+          ></canvas>
+          <div class="panel-foot">
+            <span>Resting liquidity · 1-minute snapshots</span
+            ><span class="history-coverage" data-kind="heatmap"
+              >Collecting history</span
+            >
+          </div>
+        </section>
+        <section id="panel-liquidations" class="panel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">ϟ</span> Liquidations</h2>
+            <button data-pause="liquidations">Pause</button>
+          </div>
+          <div class="filters">
+            <label
+              >Side
+              <select id="liq-side">
+                <option value="">All</option>
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+              </select></label
+            ><label
+              >Min $ <input id="liq-min" type="number" min="0" value="0"
+            /></label>
+          </div>
+          <div class="table-head three">
+            <span>Price / side</span><span>Value (USD)</span><span>Time</span>
+          </div>
+          <div id="liquidations-list" class="scroll-list">
+            <p class="empty">No liquidation events received yet</p>
+          </div>
+        </section>
+        <section id="panel-screener" class="panel wide">
+          <div class="panel-head">
+            <h2><span class="panel-icon">◫</span> Market screener</h2>
+            <span id="market-count" class="tag">BINANCE FUTURES</span>
+          </div>
+          <div class="filters">
+            <input
+              id="market-search"
+              type="search"
+              placeholder="Search markets…"
+              aria-label="Search markets"
+            /><label
+              >Sort
+              <select id="market-sort">
+                <option value="quoteVolume24h">Volume</option>
+                <option value="priceChangePercent">24h change</option>
+                <option value="lastPrice">Price</option>
+              </select></label
+            >
+          </div>
+          <div class="table-head screener-row">
+            <span>Market</span><span>Price</span><span>24h change</span
+            ><span>Volume (USD)</span><span>24h range</span>
+          </div>
+          <div id="screener-list" class="scroll-list">
+            <p class="empty">Loading markets…</p>
+          </div>
+        </section>
+        <section id="panel-news" class="panel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">◷</span> Market news</h2>
+            <span id="news-status" class="tag">CONNECTING</span>
+          </div>
+          <div id="news-list" class="scroll-list">
+            <p class="empty">Waiting for the news feed…</p>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer>
+      <span
+        ><span class="status-dot"></span> Local workspace
+        <span class="muted">/</span> Binance Futures</span
+      ><span>Market data only · History collected locally</span
+      ><time id="clock"></time>
+    </footer>
+    <dialog id="settings">
+      <form method="dialog">
+        <div class="panel-head">
+          <h2>Workspace settings</h2>
+          <button aria-label="Close settings">✕</button>
+        </div>
+        <label class="setting-row"
+          >Density
+          <select id="density">
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </select></label
+        >
+        <p class="muted">Visible panels</p>
+        <div id="panel-toggles"></div>
+        <div class="dialog-foot">
+          <button type="button" id="reset-settings">Reset workspace</button
+          ><button class="primary">Done</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
